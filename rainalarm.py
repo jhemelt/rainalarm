@@ -2,6 +2,10 @@ import requests
 import sys
 import logging
 import json
+import os
+import ssl
+import smtplib
+from email.message import EmailMessage
 from time import sleep
 
 class SmartHomeController:
@@ -30,7 +34,7 @@ class SmartHomeController:
     return True
 
   def anyWindowsOpen(self):
-    return self.openWindows.count() > 0
+    return len(self.openWindows) > 0
 
   def initLongPolling(self):
     url = "https://" + self.ipAddress + ":8444/remote/json-rpc"
@@ -88,7 +92,7 @@ class OpenWeatherMap:
   apiKey = None
 
   def getCurrentWeather(self):
-    url = "https://api.openweathermap.org/data/2.5/weather?lat=" + self.lat + "&lon=" + self.lat + "&appid=" + self.apiKey
+    url = "https://api.openweathermap.org/data/2.5/weather?lat=" + str(self.lat) + "&lon=" + str(self.lon) + "&appid=" + self.apiKey
 
     payload = {}
     headers = {}
@@ -99,24 +103,60 @@ class OpenWeatherMap:
   def __init__(self, lat, lon, apiKey):
     self.lat = lat
     self.lon = lon
+    self.apiKey = apiKey
+
+class Messenger:
+  subject = ""
+  message = ""
+  recipients = []
+  smtpPassword = ""
+
+  def send(self, subject, message):
+    port = 465  # For SSL
+    smtp_server = "smtp.strato.de"
+    sender_email = "fritzbox@hemelt.info"  # Enter your address
+    receiver_email = "juergen@hemelt.info"  # Enter receiver address
+    msg = EmailMessage()
+    msg["subject"] = subject
+    msg["from"] = sender_email
+    msg["to"] = receiver_email
+    msg.set_content( message )
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
+        server.login(sender_email, self.smtpPassword)
+        server.send_message(msg)
+
+  def __init__(self, smtpPassword):
+    self.smtpPassword = smtpPassword
 
 
 def main() -> int:
+  apiKey = os.environ["API_KEY"]
+  smtpPassword = os.environ["SMTP_PASSWORD"]
   logging.basicConfig(level=logging.INFO)
-  owm = OpenWeatherMap(52.208397, 7.316489, "05740d25baa66c3df0824fc3391f57f5")
+  messenger = Messenger(smtpPassword)
+  owm = OpenWeatherMap(52.208397, 7.316489, apiKey)
   shc = SmartHomeController("192.168.22.136")
   shc.fetchOpenWindows()
   shc.initLongPolling()
   while shc.poll():
-    if shc.anyWindowsOpen:
+    if shc.anyWindowsOpen():
+      subject = "Offene Fenster bei Regen"
+      message = "Es regnet und es gibt offene Fenster. Folgende Fenster sind offen:\n"
       logging.info("Windows are open.")
       logging.info("Open windows:")
       for window in shc.openWindows:
         logging.info("- " + window["name"])
+        message += "- " + window["name"] + "\n"        
       # check weather
-      logging.info("Current weather condition: " + shc.getCurrentWeather())
+      currentWeather = owm.getCurrentWeather()
+      logging.info("Current weather condition: " + currentWeather)
       # in case of rain or snow
-      # send message to recipients
+      if currentWeather in ["Rain", "Snow"]:
+        # send message to recipients
+        messenger.send( subject, message )
+        logging.info("Message sent. Sleeping 30 minutes ...")
+        sleep(1800)
     else:
       logging.info("No windows open.")
 
