@@ -167,8 +167,8 @@ async def main() -> int:
         logging.info("- " + window["name"] + " in " + window["roomName"])
         message += "- " + window["name"] + " in " + window["roomName"] + "\n"        
       # check weather
-      #currentWeather = owm.getCurrentWeather()
-      currentWeather = "Rain"
+      currentWeather = owm.getCurrentWeather()
+      #currentWeather = "Rain"
       logging.info("Current weather condition: " + currentWeather)
       # in case of rain or snow
       if currentWeather in ["Rain", "Snow"]:
