@@ -1,5 +1,4 @@
 import requests
-import sys
 import logging
 import json
 import os
@@ -7,6 +6,8 @@ import ssl
 import smtplib
 from email.message import EmailMessage
 from time import sleep
+import telegram
+import asyncio
 
 class SmartHomeController:
   ipAddress = None
@@ -129,12 +130,29 @@ class Messenger:
   def __init__(self, smtpPassword):
     self.smtpPassword = smtpPassword
 
+class TelegramMessenger:
+  def __init__(self, token, chatId ):
+    self.token = token
+    self.chatId = chatId
+    self.bot = telegram.Bot(token)
+  
+  async def send(self, message):
+    async with self.bot:
+        chat = self.bot.get_chat(self.chatId)
+        chat.message_auto_delete_time = 300
+        await self.bot.send_message(text=message, chat_id=self.chatId )
+    
 
-def main() -> int:
+
+async def main() -> int:
   apiKey = os.environ["API_KEY"]
   smtpPassword = os.environ["SMTP_PASSWORD"]
+  token = os.environ["TOKEN"]
+  chatId = os.environ["CHATID"]
+
   logging.basicConfig(level=logging.INFO)
-  messenger = Messenger(smtpPassword)
+  #messenger = Messenger(smtpPassword)
+  messenger = TelegramMessenger(token, chatId)
   owm = OpenWeatherMap(52.208397, 7.316489, apiKey)
   shc = SmartHomeController("192.168.22.136")
   shc.fetchOpenWindows()
@@ -146,19 +164,22 @@ def main() -> int:
       logging.info("Windows are open.")
       logging.info("Open windows:")
       for window in shc.openWindows:
-        logging.info("- " + window["name"])
-        message += "- " + window["name"] + "\n"        
+        logging.info("- " + window["name"] + " in " + window["roomName"])
+        message += "- " + window["name"] + " in " + window["roomName"] + "\n"        
       # check weather
-      currentWeather = owm.getCurrentWeather()
+      #currentWeather = owm.getCurrentWeather()
+      currentWeather = "Rain"
       logging.info("Current weather condition: " + currentWeather)
       # in case of rain or snow
       if currentWeather in ["Rain", "Snow"]:
         # send message to recipients
-        messenger.send( subject, message )
+        # messenger.send( subject, message )
+        await messenger.send(message)
         logging.info("Message sent. Sleeping 30 minutes ...")
         sleep(1800)
     else:
       logging.info("No windows open.")
 
+
 if __name__ == '__main__':
-  sys.exit(main())  
+  asyncio.run(main())  
